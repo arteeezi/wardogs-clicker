@@ -1,0 +1,21 @@
+[package]
+name = "clicker"
+version = "0.1.0"
+edition = "2024"
+description = "Autoclicker: pick a mouse button and an interval, toggle with a global hotkey"
+publish = false
+
+[dependencies]
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow"] }
+enigo = "0.6"
+global-hotkey = "0.8"
+
+[lints.rust]
+warnings = "deny"
+unsafe_code = "forbid"
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+codegen-units = 1
+strip = true
