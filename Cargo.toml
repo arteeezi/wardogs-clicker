@@ -1,6 +1,6 @@
 [package]
 name = "clicker"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Autoclicker: pick a mouse button and an interval, toggle with a global hotkey"
 publish = false

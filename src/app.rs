@@ -1,4 +1,4 @@
-//! egui front end: settings, status, start/stop.
+//! egui front end: settings, status and a stop button; start only via the global hotkey.
 
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::time::Duration;
@@ -138,10 +138,11 @@ impl App {
         ui.separator();
         ui.label(self.status_text());
         ui.small(self.hotkey_hint());
-        ui.add_space(4.0);
-        let action = if running { "Стоп" } else { "Старт" };
-        if ui.button(action).clicked() {
-            self.toggle();
+        if running {
+            ui.add_space(4.0);
+            if ui.button("Стоп").clicked() {
+                self.stop();
+            }
         }
         if let Some(error) = &self.error {
             ui.colored_label(ui.visuals().error_fg_color, error);
