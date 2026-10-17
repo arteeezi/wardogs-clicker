@@ -3,6 +3,7 @@
 mod app;
 mod clicker;
 mod hotkey;
+mod notification;
 
 use eframe::egui;
 

@@ -7,6 +7,7 @@ use eframe::egui;
 
 use crate::clicker::{ClickConfig, ClickerHandle, MouseButton, WorkerFailure, WorkerGone};
 use crate::hotkey::{HotkeyController, ToggleKey};
+use crate::notification::{Notice, NotifierHandle};
 
 const MIN_INTERVAL_MS: u64 = 1;
 const MAX_INTERVAL_MS: u64 = 600_000;
@@ -18,6 +19,7 @@ const EVENT_QUEUE_CAPACITY: usize = 32;
 enum UiEvent {
     HotkeyPressed(u32),
     ClickerFailed(WorkerFailure),
+    NoticeFailed(notify_rust::error::Error),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +39,7 @@ pub struct App {
     toggle_key: ToggleKey,
     hotkeys: Hotkeys,
     clicker: ClickerHandle,
+    notices: NotifierHandle,
     state: RunState,
     events: Receiver<UiEvent>,
     error: Option<String>,
@@ -46,6 +49,7 @@ impl App {
     pub fn new(ctx: &egui::Context) -> std::io::Result<Self> {
         let (sender, events) = mpsc::sync_channel(EVENT_QUEUE_CAPACITY);
         let clicker = ClickerHandle::spawn(notifier(ctx, &sender, UiEvent::ClickerFailed))?;
+        let notices = NotifierHandle::spawn(notifier(ctx, &sender, UiEvent::NoticeFailed))?;
         let hotkeys = match HotkeyController::new(
             DEFAULT_KEY,
             notifier(ctx, &sender, UiEvent::HotkeyPressed),
@@ -59,6 +63,7 @@ impl App {
             toggle_key: DEFAULT_KEY,
             hotkeys,
             clicker,
+            notices,
             state: RunState::Idle,
             events,
             error: None,
@@ -74,8 +79,16 @@ impl App {
                     }
                 }
                 UiEvent::ClickerFailed(failure) => {
+                    let was_running = self.state == RunState::Running;
                     self.state = RunState::Idle;
                     self.error = Some(failure.to_string());
+                    // An init failure arrives before any start; "stopped" would mislead.
+                    if was_running {
+                        self.notify(Notice::Failed(failure));
+                    }
+                }
+                UiEvent::NoticeFailed(err) => {
+                    self.error = Some(notice_failed_message(&err));
                 }
             }
         }
@@ -104,6 +117,7 @@ impl App {
             Ok(()) => {
                 self.state = RunState::Running;
                 self.error = None;
+                self.notify(Notice::Started(config));
             }
             Err(WorkerGone) => self.error = Some(worker_gone_message()),
         }
@@ -111,8 +125,16 @@ impl App {
 
     fn stop(&mut self) {
         self.state = RunState::Idle;
-        if let Err(WorkerGone) = self.clicker.stop() {
-            self.error = Some(worker_gone_message());
+        match self.clicker.stop() {
+            Ok(()) => self.notify(Notice::Stopped),
+            Err(WorkerGone) => self.error = Some(worker_gone_message()),
+        }
+    }
+
+    /// Notifications are best effort: a failure is shown, the clicker keeps going.
+    fn notify(&mut self, notice: Notice) {
+        if let Err(err) = self.notices.show(notice) {
+            self.error = Some(notice_failed_message(&err));
         }
     }
 
@@ -230,6 +252,10 @@ impl eframe::App for App {
 
 fn worker_gone_message() -> String {
     "Поток кликов завершился, перезапустите программу".to_owned()
+}
+
+fn notice_failed_message(cause: &impl std::fmt::Display) -> String {
+    format!("Уведомление не показано: {cause}")
 }
 
 /// Builds a callback that queues an event for the UI thread and wakes it.
